@@ -3,13 +3,16 @@ import mysql.connector
 from mysql.connector import Error
 import langchain.prompts as prompts
 from langchain.llms import OpenAI
+from langchain.chat_models import ChatOpenAI
 from langchain.chains import LLMChain
+import os
 
 sql_prompt = prompts.PromptTemplate(
     input_variables=["question", "schema"],
     template="You are a sql expert."
     "I'll ask a question, and provide you a list of tables with their definition. These tables are stored in a MySQL server."
-    "Based on the provided content, what sql query I need to use in order to answer the question?"
+    "Based on the provided content, what sql query I need to use in order to answer the question? Make sure to includ the ';'"
+    "at the end of the query."
     "Question: {question}"
     "Table definition: {schema}"
 )
@@ -29,7 +32,6 @@ class Sql():
     @staticmethod
     def extract(context):
         context = context.replace('\n', ' ').replace('\r', '')
-        #print("Debug:  " + sql)
         x = re.findall("SELECT.*;", context)
         query = x[0].strip(";")
         return query
@@ -73,14 +75,16 @@ class Db():
 
     def __init__(self, database, host='localhost', user='root', password=None, schema_file=None):
 
-        self.connection = Connection(database='test_ai',host='localhost',user='root')
+        self.connection = Connection(database=database,host=host,user=user, password=password)
         if self.is_connected():
             print("Connected to database {} at {}".format(database, host))
 
         with open(schema_file, 'r') as file:
             self.schema = file.read()
 
-        self.llm = OpenAI(temperature=0, model_name="text-davinci-003")
+        #self.llm = OpenAI(temperature=0, model_name="text-davinci-003")
+        #self.llm = OpenAI(temperature=0, model_name="gpt-3.5-turbo")
+        self.llm = ChatOpenAI(temperature=0, model_name="gpt-4")
         self.sql_chain = LLMChain(prompt=sql_prompt, llm=self.llm)
         self.answer_chain = LLMChain(prompt=answer_prompt, llm=self.llm)
 
@@ -103,7 +107,7 @@ class Db():
         return res
     
     def ask(self, question):
-        print("Q:  " + question)
+        #print("Q:  " + question)
 
         answer = self.sql_chain.run({
             "question" : question,
@@ -119,11 +123,29 @@ class Db():
             "result" : res
             })
         
-        print()
-        print("A:  " + answer)
+        return answer
+    
+    # For testing purpose only
+    def ask_debug(self, question, dryrun=False):
+        print("Q:     " + question)
 
-        print()
-        print("SQL executed:  " + query)
-        print()
-        print("---------------------")
-        print()
+        answer = self.sql_chain.run({
+            "question" : question,
+            "schema" : self.schema
+            })
+
+        query = Sql.extract(answer)
+        print("Query: " + query)
+
+        if dryrun:
+            return query
+
+        res = self.query(query)
+
+        answer = self.answer_chain.run({
+            "question" : question,
+            "query" : query,
+            "result" : res
+            })
+        print("Answer: " + answer)
+        return answer

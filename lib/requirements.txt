@@ -1,0 +1,9 @@
+datasets==2.*
+flask==2.1.*
+requests==2.27.*
+sentencepiece==0.1.*
+torch==1.11.*
+transformers==4.*
+langchain
+mysql-connector
+openai
